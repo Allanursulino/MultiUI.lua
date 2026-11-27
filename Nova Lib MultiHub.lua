@@ -1,8 +1,9 @@
 --[[
-	MULTI HUB · UI Library  v2.1
+	MULTI HUB · UI Library  v2.2
 	Original by Dev - wendel · v2: languages (EN / PT-BR / ES), Roblox-language detection,
 	tooltips, status indicators, profiles, fixes · v2.1: horizontal navigation (reference
-	layout), Player and Performance pages, FPS display, Liquid Glass style, Unload.
+	layout), Player and Performance pages, FPS display, Liquid Glass style, Unload. v2.2: solid
+	dark-red look when Liquid Glass is off, glass rims / lens knobs / tab capsule, neutral edges.
 
 	The v1 public API is unchanged; everything new is optional.
 
@@ -68,7 +69,7 @@ end
 local CONFIG = {
 	HubName = "MULTI HUB",
 	Version = "1.0", -- saved-profile format; v1 profiles keep loading. Change it to invalidate old saves.
-	LibraryVersion = "2.1",
+	LibraryVersion = "2.2",
 	ToggleKey = Enum.KeyCode.RightShift, -- default; the user can change it in Settings
 	QuickTabs = {}, -- tab ids shown on Home (filled automatically with the first tabs)
 
@@ -453,7 +454,7 @@ I18n.Strings.en = {
 	["settings.notifications"] = "Notifications",
 	["settings.notifications.desc"] = "Show pop-up messages in the corner",
 	["settings.glass"] = "Liquid Glass",
-	["settings.glass.desc"] = "Translucent frosted panels with soft reflections",
+	["settings.glass.desc"] = "Translucent glass with light edges and liquid controls. Off: solid dark-red style",
 	["settings.blur"] = "Background blur",
 	["settings.blur.desc"] = "Blurs the game behind the open window (uses more GPU)",
 	["settings.scale"] = "Interface scale",
@@ -668,7 +669,7 @@ I18n.Strings["pt-br"] = {
 	["settings.notifications"] = "Notificações",
 	["settings.notifications.desc"] = "Mostrar mensagens no canto da tela",
 	["settings.glass"] = "Liquid Glass",
-	["settings.glass.desc"] = "Painéis translúcidos de vidro fosco com reflexos suaves",
+	["settings.glass.desc"] = "Vidro translúcido com bordas de luz e controles líquidos. Desligado: estilo sólido escuro e vermelho",
 	["settings.blur"] = "Desfoque do fundo",
 	["settings.blur.desc"] = "Desfoca o jogo atrás da janela aberta (usa mais GPU)",
 	["settings.scale"] = "Escala da interface",
@@ -883,7 +884,7 @@ I18n.Strings.es = {
 	["settings.notifications"] = "Notificaciones",
 	["settings.notifications.desc"] = "Mostrar mensajes en la esquina de la pantalla",
 	["settings.glass"] = "Liquid Glass",
-	["settings.glass.desc"] = "Paneles translúcidos de vidrio esmerilado con reflejos suaves",
+	["settings.glass.desc"] = "Vidrio translúcido con bordes de luz y controles líquidos. Apagado: estilo sólido oscuro y rojo",
 	["settings.blur"] = "Desenfoque del fondo",
 	["settings.blur.desc"] = "Desenfoca el juego detrás de la ventana abierta (usa más GPU)",
 	["settings.scale"] = "Escala de la interfaz",
@@ -1989,24 +1990,67 @@ local UI = {
 -- so the effect is built from translucent layers, a soft top reflection and light edges.
 -- The optional background blur uses a BlurEffect in the camera (blurs the 3D scene only).
 
-local Style = { items = {}, count = 0 }
+local Style = { items = {}, count = 0, listeners = {} }
 local GLASS_EDGE = Color3.fromRGB(255, 255, 255)
+local GLASS_BG = Color3.fromRGB(10, 10, 13)
+
+-- Solid look (Liquid Glass off): opaque near-black window, cards with a deep red tint that
+-- fades to black, and dark red edges.
+local SOLID = {
+	Bg = Color3.fromRGB(8, 8, 10),
+	Surface = Color3.fromRGB(40, 10, 15),
+	SurfaceHover = Color3.fromRGB(56, 13, 20),
+	Panel = Color3.fromRGB(24, 9, 12),
+	Edge = Color3.fromRGB(122, 18, 30),
+}
+
+-- Vertical fade applied to cards (a UIGradient only affects its own parent, never the
+-- children, so it is safe on frames that use layouts).
+local SOLID_FADE = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(105, 105, 105))
+local GLASS_FADE = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(200, 200, 200))
+
+local function setFade(object, s)
+	local fade = object:FindFirstChild("StyleFade")
+	if not fade then
+		return
+	end
+	fade.Enabled = not s.reduced
+	if s.glass then
+		fade.Color = GLASS_FADE
+		fade.Transparency = NumberSequence.new(0, 0.35)
+	else
+		fade.Color = SOLID_FADE
+		fade.Transparency = NumberSequence.new(0)
+	end
+end
+
+local function setRim(stroke, on)
+	local rim = stroke:FindFirstChild("StyleRim")
+	if rim then
+		rim.Enabled = on
+	end
+end
 
 local STYLE_KINDS = {
 	window = function(object, s)
-		object.BackgroundTransparency = s.glass and 0.16 or 0
+		object.BackgroundColor3 = s.glass and GLASS_BG or SOLID.Bg
+		object.BackgroundTransparency = s.glass and 0.24 or 0
 	end,
 	surface = function(object, s)
-		object.BackgroundTransparency = s.glass and 0.38 or (s.reduced and 0 or 0.08)
+		object.BackgroundColor3 = s.glass and THEME.Surface or SOLID.Surface
+		object.BackgroundTransparency = s.glass and 0.5 or 0
+		setFade(object, s)
 	end,
 	row = function(object, s)
-		object.BackgroundTransparency = s.glass and 0.42 or 0
+		object.BackgroundTransparency = s.glass and 0.45 or 0
 	end,
 	input = function(object, s)
-		object.BackgroundTransparency = s.glass and 0.3 or 0
+		object.BackgroundTransparency = s.glass and 0.35 or 0
 	end,
 	panel = function(object, s)
-		object.BackgroundTransparency = s.glass and 0.1 or 0
+		object.BackgroundColor3 = s.glass and THEME.Surface or SOLID.Panel
+		object.BackgroundTransparency = s.glass and 0.12 or 0
+		setFade(object, s)
 	end,
 	decor = function(object, s) -- shadows, glow, dot grid
 		object.Visible = not s.reduced
@@ -2018,10 +2062,64 @@ local STYLE_KINDS = {
 		object.Visible = not s.reduced and not s.light
 	end,
 	edge = function(object, s) -- UIStroke of the window border
-		object.Color = s.glass and GLASS_EDGE or THEME.Stroke
-		object.Transparency = s.glass and 0.82 or 0.15
+		object.Color = s.glass and GLASS_EDGE or SOLID.Edge
+		object.Transparency = s.glass and 0.1 or 0.2
+		object.Thickness = s.glass and 1.5 or 1
+		setRim(object, s.glass)
+	end,
+	cardEdge = function(object, s) -- UIStroke of static cards and sections
+		object.Color = s.glass and GLASS_EDGE or SOLID.Edge
+		object.Transparency = s.glass and 0.35 or 0.45
+		setRim(object, s.glass)
+	end,
+	divider = function(object, s)
+		object.BackgroundColor3 = s.glass and GLASS_EDGE or THEME.AccentDark
+		object.BackgroundTransparency = s.glass and 0.88 or 0.25
 	end,
 }
+
+-- Liquid Glass rim: light hits the top-left and bottom-right edges, the sides stay dim.
+function Style.addRim(stroke)
+	if stroke:FindFirstChild("StyleRim") then
+		return
+	end
+	create("UIGradient", {
+		Name = "StyleRim",
+		Rotation = 45,
+		Enabled = false,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.3, 0.75),
+			NumberSequenceKeypoint.new(0.7, 0.85),
+			NumberSequenceKeypoint.new(1, 0.35),
+		}),
+		Parent = stroke,
+	})
+end
+
+-- Colour a card rests at / hovers to in the current style (hover handlers use these).
+function Style.baseColor(object)
+	local kind = Style.items[object]
+	local glass = Style.state().glass
+	if kind == "surface" then
+		return glass and THEME.Surface or SOLID.Surface
+	elseif kind == "panel" then
+		return glass and THEME.Surface or SOLID.Panel
+	end
+	return THEME.Surface
+end
+
+function Style.hoverColor(object)
+	if Style.items[object] == "surface" and not Style.state().glass then
+		return SOLID.SurfaceHover
+	end
+	return THEME.RowHover
+end
+
+-- Things that are more than one property (nav pill, page cards) re-paint through listeners.
+function Style.onChange(callback)
+	table.insert(Style.listeners, callback)
+end
 
 function Style.state()
 	return {
@@ -2033,6 +2131,19 @@ end
 
 function Style.register(object, kind)
 	Style.items[object] = kind
+	if (kind == "surface" or kind == "panel") and not object:FindFirstChildOfClass("UIGradient") then
+		create("UIGradient", { Name = "StyleFade", Rotation = 90, Parent = object })
+	end
+	if kind == "surface" and not object:IsA("GuiButton") then
+		-- Static cards (sections, Home/Settings blocks) get the styled edge; clickable
+		-- cards keep a neutral edge and only light up when hovered or selected.
+		local stroke = object:FindFirstChildOfClass("UIStroke")
+		if stroke and not Style.items[stroke] then
+			Style.addRim(stroke)
+			Style.items[stroke] = "cardEdge"
+			STYLE_KINDS.cardEdge(stroke, Style.state())
+		end
+	end
 	STYLE_KINDS[kind](object, Style.state())
 	Style.count += 1
 	if Style.count % 300 == 0 then
@@ -2053,6 +2164,9 @@ function Style.apply()
 		else
 			STYLE_KINDS[kind](object, state)
 		end
+	end
+	for _, callback in Style.listeners do
+		pcall(callback, state)
 	end
 	if UI.updateBlur then
 		UI.updateBlur()
@@ -2107,6 +2221,7 @@ local window = create("CanvasGroup", {
 Style.register(window, "window")
 
 local borderStroke = Util.stroke(THEME.Stroke, 0.15)
+Style.addRim(borderStroke)
 create("Frame", {
 	Name = "Border",
 	Size = UDim2.fromScale(1, 1),
@@ -2119,19 +2234,22 @@ Style.register(borderStroke, "edge")
 -- Liquid Glass reflection: a soft white sheen over the top of the window.
 Style.register(create("Frame", {
 	Name = "Sheen",
-	Size = UDim2.new(1, 0, 0, 110),
+	Size = UDim2.fromScale(1, 1),
 	BackgroundColor3 = Color3.new(1, 1, 1),
-	BackgroundTransparency = 0.9,
+	BackgroundTransparency = 0.86,
 	BorderSizePixel = 0,
 	ZIndex = 1,
 	Parent = window,
 }, {
+	-- Diagonal light: bright in the top-left corner, a faint second band, clear elsewhere.
 	create("UIGradient", {
-		Rotation = 90,
+		Rotation = 35,
 		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.2),
-			NumberSequenceKeypoint.new(0.35, 0.75),
-			NumberSequenceKeypoint.new(1, 1),
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(0.22, 0.8),
+			NumberSequenceKeypoint.new(0.5, 1),
+			NumberSequenceKeypoint.new(0.78, 0.92),
+			NumberSequenceKeypoint.new(1, 0.7),
 		}),
 	}),
 }), "glassOnly")
@@ -2404,7 +2522,7 @@ local navScroll = create("ScrollingFrame", {
 	AutomaticCanvasSize = Enum.AutomaticSize.X,
 	Parent = navBar,
 }, { Util.list(2, Enum.FillDirection.Horizontal, { VerticalAlignment = Enum.VerticalAlignment.Center }) })
-create("Frame", {
+Style.register(create("Frame", {
 	Name = "Divider",
 	AnchorPoint = Vector2.new(0, 1),
 	Position = UDim2.new(0, 16, 1, 0),
@@ -2412,7 +2530,7 @@ create("Frame", {
 	BackgroundColor3 = THEME.StrokeSoft,
 	BorderSizePixel = 0,
 	Parent = navBar,
-})
+}), "divider")
 
 local content = create("Frame", {
 	Name = "Content",
@@ -3077,7 +3195,14 @@ end
 -- Rows read State[item.id] and write through Elements[item.id]:Set(), so the same item can be
 -- shown in its tab and in search results at the same time and both stay in sync (bindLive).
 
-local Components = { scrollers = {}, activeSlider = nil, activeKnob = nil, keyCapture = nil }
+local Components = {
+	scrollers = {},
+	activeSlider = nil,
+	activeKnob = nil,
+	knobRelease = nil,
+	keyCapture = nil,
+	toggleTokens = setmetatable({}, { __mode = "k" }),
+}
 
 local function hasText(raw)
 	if raw == nil then
@@ -3104,10 +3229,15 @@ local function formatNumber(value)
 end
 
 -- Locks list scrolling while a slider is dragged (otherwise the finger scrolls instead).
-function Components.setActiveSlider(handler, knobScale)
+function Components.setActiveSlider(handler, knobScale, onRelease)
 	if handler == nil and Components.activeKnob then
 		tween(Components.activeKnob, 0.2, { Scale = 1 })
 		Components.activeKnob = nil
+		if Components.knobRelease then
+			local release = Components.knobRelease
+			Components.knobRelease = nil
+			pcall(release)
+		end
 	end
 	Components.activeSlider = handler
 	for index = #Components.scrollers, 1, -1 do
@@ -3120,6 +3250,7 @@ function Components.setActiveSlider(handler, knobScale)
 	end
 	if handler ~= nil then
 		Components.activeKnob = knobScale
+		Components.knobRelease = onRelease
 	end
 end
 
@@ -3257,7 +3388,7 @@ function Components.toggle(item, parent)
 		BackgroundColor3 = THEME.Knob,
 		BorderSizePixel = 0,
 		Parent = track,
-	}, { Util.corner(7) })
+	}, { Util.corner(RADIUS.Pill) })
 	local function render(animate)
 		local on = State[item.id] == true
 		local trackGoal = { BackgroundColor3 = on and THEME.Accent or THEME.Track }
@@ -3266,13 +3397,36 @@ function Components.toggle(item, parent)
 			BackgroundColor3 = on and Color3.new(1, 1, 1) or THEME.Knob,
 		}
 		kit.setActive(on, animate)
-		if animate then
+		if animate and Style.state().glass then
+			-- Liquid: stretch toward the destination, then settle with a small bounce.
+			tween(track, 0.2, trackGoal)
+			local stretch = tween(knob, 0.12, {
+				Size = UDim2.fromOffset(22, 14),
+				Position = UDim2.new(0, on and 11 or 3, 0.5, 0),
+				BackgroundColor3 = knobGoal.BackgroundColor3,
+			})
+			local token = {}
+			Components.toggleTokens[knob] = token
+			local function settle()
+				if Components.toggleTokens[knob] ~= token then
+					return
+				end
+				Components.toggleTokens[knob] = nil
+				tween(knob, 0.3, { Size = UDim2.fromOffset(14, 14), Position = knobGoal.Position }, Enum.EasingStyle.Back)
+			end
+			if stretch then
+				stretch.Completed:Once(settle)
+			else
+				settle()
+			end
+		elseif animate then
 			tween(track, 0.2, trackGoal)
 			tween(knob, 0.3, knobGoal, Enum.EasingStyle.Back)
 		else
 			track.BackgroundColor3 = trackGoal.BackgroundColor3
 			knob.Position = knobGoal.Position
 			knob.BackgroundColor3 = knobGoal.BackgroundColor3
+			knob.Size = UDim2.fromOffset(14, 14)
 		end
 	end
 	render(false)
@@ -3378,8 +3532,28 @@ function Components.slider(item, parent)
 		BorderSizePixel = 0,
 		ZIndex = 2,
 		Parent = track,
-	}, { Util.corner(6), Util.stroke(THEME.Accent, 0, 2) })
+	}, { Util.corner(RADIUS.Pill), Util.stroke(THEME.Accent, 0, 2) })
 	local knobScale = create("UIScale", { Parent = knob })
+	local knobStroke = knob:FindFirstChildOfClass("UIStroke")
+
+	-- Liquid Glass: while dragged the knob becomes a clear glass capsule (a lens over the
+	-- track); released, it springs back to the solid knob.
+	local function lensOn()
+		if not Style.state().glass then
+			return false
+		end
+		tween(knob, 0.25, { Size = UDim2.fromOffset(26, 16), BackgroundTransparency = 0.8 }, Enum.EasingStyle.Back)
+		if knobStroke then
+			tween(knobStroke, 0.2, { Color = GLASS_EDGE, Transparency = 0.15, Thickness = 1.5 })
+		end
+		return true
+	end
+	local function lensOff()
+		tween(knob, 0.3, { Size = UDim2.fromOffset(12, 12), BackgroundTransparency = 0 }, Enum.EasingStyle.Back)
+		if knobStroke then
+			tween(knobStroke, 0.2, { Color = THEME.Accent, Transparency = 0, Thickness = 2 })
+		end
+	end
 
 	local function render(animate)
 		local value = State[item.id] or item.min
@@ -3415,8 +3589,9 @@ function Components.slider(item, parent)
 	bindLive(item.id, row, render)
 	hit.InputBegan:Connect(function(input)
 		if Util.isPress(input) then
-			Components.setActiveSlider(setFromX, knobScale)
-			tween(knobScale, 0.15, { Scale = 1.35 }, Enum.EasingStyle.Back)
+			local lens = lensOn()
+			Components.setActiveSlider(setFromX, knobScale, lens and lensOff or nil)
+			tween(knobScale, 0.15, { Scale = lens and 1 or 1.35 }, Enum.EasingStyle.Back)
 			setFromX(input.Position.X)
 		end
 	end)
@@ -4140,6 +4315,8 @@ local Pages = {
 	renderSearch = (nil :: any),
 	subScroll = (nil :: any),
 	gridBadges = {},
+	cardPainters = {},
+	paintCards = (nil :: any),
 	quickBadges = {},
 }
 
@@ -4289,18 +4466,57 @@ function Nav.item(key, iconName, glyph, textKey, order, onClick)
 		BorderSizePixel = 0,
 		Parent = button,
 	}, { Util.corner(1) })
+	-- Liquid Glass: the active tab sits in a glass capsule that grows out of the centre.
+	local pillStroke = Util.stroke(GLASS_EDGE, 0.1, 1)
+	Style.addRim(pillStroke)
+	setRim(pillStroke, true)
+	local pill = create("Frame", {
+		Name = "GlassPill",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0, 0, 1, -10),
+		BackgroundColor3 = GLASS_EDGE,
+		BackgroundTransparency = 0.9,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Visible = false,
+		Parent = button,
+	}, {
+		Util.corner(RADIUS.Pill),
+		pillStroke,
+		create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new(0, 0.6),
+		}),
+	})
 
 	local obj = { button = button, active = false, hovered = false }
 	local function paint(animate)
 		local on = obj.active
 		local color = on and THEME.Accent or (obj.hovered and THEME.Text or THEME.SubText)
 		local lineGoal = { Size = UDim2.new(on and 1 or (obj.hovered and 0.3 or 0), on and -20 or 0, 0, 2) }
+		local glass = Style.state().glass
+		local pillOn = glass and on
+		local pillGoal = { Size = pillOn and UDim2.new(1, -4, 1, -10) or UDim2.new(0, 0, 1, -10) }
+		if pillOn then
+			pill.Visible = true
+		end
 		if animate then
 			tween(text, 0.18, { TextColor3 = color })
 			tween(underline, 0.28, lineGoal)
+			local pillTween = tween(pill, pillOn and 0.45 or 0.2, pillGoal, pillOn and Enum.EasingStyle.Back or nil)
+			if not pillOn and pillTween then
+				pillTween.Completed:Once(function()
+					if not (obj.active and Style.state().glass) then
+						pill.Visible = false
+					end
+				end)
+			end
 		else
 			text.TextColor3 = color
 			underline.Size = lineGoal.Size
+			pill.Size = pillGoal.Size
+			pill.Visible = pillOn
 		end
 		setIconColor(color, animate)
 	end
@@ -4323,6 +4539,9 @@ function Nav.item(key, iconName, glyph, textKey, order, onClick)
 	Util.pressScale(button, 0.95)
 	button.Activated:Connect(onClick)
 	paint(false)
+	Style.onChange(function()
+		paint(false)
+	end)
 	Nav.items[key] = obj
 	return obj
 end
@@ -4886,10 +5105,10 @@ do
 			Parent = card,
 		})
 		Util.hover(card, function()
-			tween(card, 0.15, { BackgroundColor3 = THEME.RowHover })
+			tween(card, 0.15, { BackgroundColor3 = Style.hoverColor(card) })
 			tween(stroke, 0.15, { Color = THEME.AccentDark })
 		end, function()
-			tween(card, 0.2, { BackgroundColor3 = THEME.Surface })
+			tween(card, 0.2, { BackgroundColor3 = Style.baseColor(card) })
 			tween(stroke, 0.2, { Color = THEME.StrokeSoft })
 		end)
 		Util.pressScale(card, 0.97)
@@ -4948,7 +5167,7 @@ do
 		Parent = page,
 	}, { Util.corner(RADIUS.Card) })
 	Style.register(boxFrame, "input")
-	local boxStroke = Util.stroke(THEME.AccentDark, 0.35)
+	local boxStroke = Util.stroke(THEME.Stroke, 0.2)
 	boxStroke.Parent = boxFrame
 	local queryBox = create("TextBox", {
 		Text = "",
@@ -4982,7 +5201,7 @@ do
 		tween(boxStroke, 0.15, { Color = THEME.Accent, Transparency = 0 })
 	end)
 	queryBox.FocusLost:Connect(function()
-		tween(boxStroke, 0.15, { Color = THEME.AccentDark, Transparency = 0.35 })
+		tween(boxStroke, 0.15, { Color = THEME.Stroke, Transparency = 0.2 })
 	end)
 
 	local function listScroll(name)
@@ -5032,8 +5251,29 @@ do
 			Parent = grid,
 		}, { Util.corner(RADIUS.Card) })
 		Style.register(card, "surface")
-		local stroke = Util.stroke(THEME.AccentDark, 0.35)
+		local stroke = Util.stroke(THEME.Stroke, 0.2)
 		stroke.Parent = card
+		local visual = { hovered = false }
+		-- Red edge only on the selected card (the page opened last) or under the mouse.
+		local function paintCard(animate)
+			local selected = Router.currentTab == tab
+			local lit = selected or visual.hovered
+			local goalCard = { BackgroundColor3 = visual.hovered and Style.hoverColor(card) or Style.baseColor(card) }
+			local goalStroke = {
+				Color = lit and THEME.Accent or THEME.Stroke,
+				Transparency = lit and (selected and 0 or 0.15) or 0.2,
+			}
+			if animate then
+				tween(card, 0.15, goalCard)
+				tween(stroke, 0.15, goalStroke)
+			else
+				card.BackgroundColor3 = goalCard.BackgroundColor3
+				stroke.Color = goalStroke.Color
+				stroke.Transparency = goalStroke.Transparency
+			end
+		end
+		Pages.cardPainters[card] = paintCard
+		paintCard(false)
 		Icons.make(card, tab.icon, 18, THEME.Accent, {
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 16, 0.5, 0),
@@ -5080,11 +5320,11 @@ do
 			Parent = card,
 		})
 		Util.hover(card, function()
-			tween(card, 0.15, { BackgroundColor3 = THEME.RowHover })
-			tween(stroke, 0.15, { Color = THEME.Accent, Transparency = 0 })
+			visual.hovered = true
+			paintCard(true)
 		end, function()
-			tween(card, 0.2, { BackgroundColor3 = THEME.Surface })
-			tween(stroke, 0.2, { Color = THEME.AccentDark, Transparency = 0.35 })
+			visual.hovered = false
+			paintCard(true)
 		end)
 		Util.pressScale(card, 0.97)
 		card.Activated:Connect(function()
@@ -5092,9 +5332,23 @@ do
 		end)
 	end
 
+	function Pages.paintCards()
+		for card, paint in Pages.cardPainters do
+			if card.Parent == nil then
+				Pages.cardPainters[card] = nil
+			else
+				paint(true)
+			end
+		end
+	end
+	Style.onChange(function()
+		Pages.paintCards()
+	end)
+
 	function Pages.rebuildGrid()
 		Util.clear(grid)
 		table.clear(Pages.gridBadges)
+		table.clear(Pages.cardPainters)
 		local empty = gridScroll:FindFirstChild("Empty")
 		if empty then
 			empty:Destroy()
@@ -5349,6 +5603,7 @@ do
 
 	function Router.openTab(tab)
 		Router.currentTab = tab
+		Pages.paintCards()
 		local ok, err = pcall(Pages.renderTab, tab)
 		if not ok then
 			warn("[MultiHub] could not render page '" .. tostring(tab.id) .. "': " .. tostring(err))
