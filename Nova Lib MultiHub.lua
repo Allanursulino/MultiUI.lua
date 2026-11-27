@@ -154,6 +154,12 @@ local I18n = {
 	Bound = {}, -- [Instance] = { getter, property }
 	bindCount = 0,
 	Internal = (nil :: any), -- UI hook run on every language change (set by the PAGES section)
+	-- Script dictionary (Library:AddDictionary): plain English text -> translations.
+	-- Any Title / Desc / Text / Tooltip / Placeholder / Content written as a plain string,
+	-- and every dropdown option label, is looked up here, so a script written in English
+	-- shows in the player's language without rewriting each control.
+	Dictionary = {}, -- [text] = { ["pt-br"] = "...", es = "..." }
+	DictionaryLower = {}, -- same entries keyed by lower-case trimmed text
 }
 
 -- (the dictionaries live in the STRINGS section right below this one)
@@ -242,7 +248,67 @@ function I18n.resolve(value)
 	if value == nil then
 		return ""
 	end
-	return tostring(value)
+	return I18n.lookup(tostring(value))
+end
+
+-- Translation of a plain string through the script dictionary (unchanged when missing).
+function I18n.lookup(text)
+	if next(I18n.Dictionary) == nil or text == "" then
+		return text
+	end
+	local entry = I18n.Dictionary[text]
+	if entry == nil then
+		local trimmed = string.match(text, "^%s*(.-)%s*$") or text
+		entry = I18n.DictionaryLower[string.lower(trimmed)]
+	end
+	if entry == nil then
+		return text
+	end
+	local current = I18n.Current
+	local translated = entry[current] or entry[string.match(current, "^(%a+)") or current]
+	if translated == nil or translated == "" then
+		return text
+	end
+	return tostring(translated)
+end
+
+-- Adds entries to the script dictionary. Accepts both shapes:
+--   I18n.addDictionary({ ["Auto Mine"] = { ["pt-br"] = "...", es = "..." } })
+--   I18n.addDictionary("pt-br", { ["Auto Mine"] = "..." })
+function I18n.addDictionary(first, second)
+	local function put(text, code, translated)
+		if type(text) ~= "string" or text == "" or translated == nil then
+			return
+		end
+		code = I18n.normalize(code) or string.lower(tostring(code))
+		local entry = I18n.Dictionary[text]
+		if entry == nil then
+			entry = {}
+			I18n.Dictionary[text] = entry
+		end
+		entry[code] = tostring(translated)
+		local trimmed = string.match(text, "^%s*(.-)%s*$") or text
+		I18n.DictionaryLower[string.lower(trimmed)] = entry
+	end
+	local count = 0
+	if type(first) == "string" and type(second) == "table" then
+		for text, translated in second do
+			put(text, first, translated)
+			count += 1
+		end
+	elseif type(first) == "table" then
+		for text, languages in first do
+			if type(languages) == "table" then
+				for code, translated in languages do
+					if type(code) == "string" then
+						put(text, code, translated)
+					end
+				end
+				count += 1
+			end
+		end
+	end
+	return count
 end
 
 -- Keeps a text property in sync with the language. source = key or function returning text.
@@ -3615,7 +3681,8 @@ local function optionText(item, option)
 	if item.format then
 		return item.format(option)
 	end
-	return tostring(option)
+	-- Only the label is translated; the saved value stays the original option string.
+	return I18n.lookup(tostring(option))
 end
 
 local function dropdownDisplay(item)
@@ -7723,6 +7790,17 @@ local Library = (function()
 
 	function Library:T(key, ...)
 		return I18n.t(key, ...)
+	end
+
+	-- Script dictionary: translates the plain English texts of a script (titles, descriptions,
+	-- tooltips, paragraphs, notifications and dropdown option labels) into the player's
+	-- language. Call it before creating the controls (it also refreshes visible ones).
+	--   Library:AddDictionary({ ["Auto Mine"] = { ["pt-br"] = "Mineração automática", es = "Minería automática" } })
+	--   Library:AddDictionary("pt-br", { ["Auto Mine"] = "Mineração automática" })
+	function Library:AddDictionary(first, second)
+		local count = I18n.addDictionary(first, second)
+		I18n.refresh()
+		return count
 	end
 
 	-- Resolves a translatable value ({ en = ..., ["pt-br"] = ... }) in the current language.
